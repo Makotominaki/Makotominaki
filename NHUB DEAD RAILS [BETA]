@@ -1,0 +1,547 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- GUI Container
+local screenGui = Instance.new("ScreenGui", playerGui)
+screenGui.Name = "NHUBGui"
+screenGui.ResetOnSpawn = false
+
+-- Toggle Button
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Parent = screenGui
+toggleButton.Text = "NHUB DEAD RAILS"
+toggleButton.Size = UDim2.new(0, 160, 0, 40)
+toggleButton.Position = UDim2.new(1, -180, 0, 20)
+toggleButton.BackgroundColor3 = Color3.fromRGB(40, 0, 0)
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.TextSize = 14
+toggleButton.BorderSizePixel = 0
+
+-- Main Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainMenu"
+mainFrame.Parent = screenGui
+mainFrame.Size = UDim2.new(0, 300, 1, 0)
+mainFrame.Position = UDim2.new(0, -300, 0, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 0, 0)
+mainFrame.BorderSizePixel = 0
+
+-- Scrollable
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Parent = mainFrame
+scrollFrame.Size = UDim2.new(1, 0, 1, 0)
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollFrame.ScrollBarThickness = 8
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+local layout = Instance.new("UIListLayout", scrollFrame)
+layout.Padding = UDim.new(0, 8)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- Helper Functions
+local function createSectionHeader(text)
+	local header = Instance.new("TextLabel")
+	header.Size = UDim2.new(1, -20, 0, 30)
+	header.Position = UDim2.new(0, 10, 0, 0)
+	header.BackgroundTransparency = 1
+	header.Text = "[ " .. text .. " ]"
+	header.TextColor3 = Color3.fromRGB(255, 50, 50)
+	header.Font = Enum.Font.GothamBold
+	header.TextSize = 16
+	header.TextXAlignment = Enum.TextXAlignment.Left
+	header.Parent = scrollFrame
+	return header
+end
+
+local function createButton(text, callback)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -20, 0, 40)
+	btn.Position = UDim2.new(0, 10, 0, 0)
+	btn.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.Text = text
+	btn.Font = Enum.Font.Gotham
+	btn.TextSize = 14
+	btn.BorderSizePixel = 0
+	btn.Parent = scrollFrame
+	if callback then
+		btn.MouseButton1Click:Connect(function()
+			callback(btn)
+		end)
+	end
+	return btn
+end
+
+-- === Sections ===
+createSectionHeader("CLASS SELECTION")
+createButton("คลาสม้า", function()
+	ReplicatedStorage.Shared.RemotePromise.Remotes.C_EquipClass:FireServer("Horse")
+end)
+createButton("คลาสไข่", function()
+	ReplicatedStorage.Shared.RemotePromise.Remotes.C_EquipClass:FireServer("Eggslinger")
+end)
+
+-- === เปลี่ยนคลาส ===
+createSectionHeader("เปลี่ยนคลาส")
+
+local classList = {
+    "Musician",
+    "Doctor",
+    "Miner",
+    "Arsonist",
+    "Packmaster",
+    "Necromancer",
+    "Werewolf",
+    "HighRoller",
+    "Conductor",
+    "Cowboy",
+    "Alamo",
+    "Zombie",
+    -- ถ้ามีต่อท้าย V... ตัดมาเพิ่มได้
+}
+
+for _, className in ipairs(classList) do
+    createButton("คลาส: " .. className, function()
+        local args = {
+            [1] = className
+        }
+        ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RemotePromise"):WaitForChild("Remotes"):WaitForChild("C_EquipClass"):FireServer(unpack(args))
+    end)
+end
+
+createSectionHeader("PLAYER SETTINGS")
+-- BOT LOCK
+local npcLock = false
+local toggleLoop
+local lastTarget = nil
+local camera = workspace.CurrentCamera
+
+local function addPlayerHighlight()
+    if player.Character then
+        local highlight = player.Character:FindFirstChild("PlayerHighlightESP")
+        if not highlight then
+            highlight = Instance.new("Highlight")
+            highlight.Name = "PlayerHighlightESP"
+            highlight.FillColor = Color3.new(1, 1, 1)
+            highlight.OutlineColor = Color3.new(1, 1, 1)
+            highlight.FillTransparency = 0.5
+            highlight.OutlineTransparency = 0
+            highlight.Parent = player.Character
+        end
+    end
+end
+
+local function removePlayerHighlight()
+    if player.Character and player.Character:FindFirstChild("PlayerHighlightESP") then
+        player.Character.PlayerHighlightESP:Destroy()
+    end
+end
+
+local function getClosestNPC()
+    local closestNPC = nil
+    local closestDistance = math.huge
+
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") then
+            local humanoid = object:FindFirstChild("Humanoid") or object:FindFirstChildWhichIsA("Humanoid")
+            local hrp = object:FindFirstChild("HumanoidRootPart") or object.PrimaryPart
+            if humanoid and hrp and humanoid.Health > 0 and object.Name ~= "Horse" then
+                local isPlayer = false
+                for _, pl in ipairs(Players:GetPlayers()) do
+                    if pl.Character == object then
+                        isPlayer = true
+                        break
+                    end
+                end
+                if not isPlayer then
+                    local distance = (hrp.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                    if distance < closestDistance then
+                        closestDistance = distance
+                        closestNPC = object
+                    end
+                end
+            end
+        end
+    end
+
+    return closestNPC
+end
+
+createButton("ล็อกบอท: ปิด", function(btn)
+    npcLock = not npcLock
+    btn.Text = "ล็อกบอท: " .. (npcLock and "เปิด" or "ปิด")
+
+    if npcLock then
+        toggleLoop = RunService.RenderStepped:Connect(function()
+            local npc = getClosestNPC()
+            if npc and npc:FindFirstChild("Humanoid") then
+                local npcHumanoid = npc:FindFirstChild("Humanoid")
+                if npcHumanoid.Health > 0 then
+                    camera.CameraSubject = npcHumanoid
+                    lastTarget = npc
+                    addPlayerHighlight()
+                else
+                    StarterGui:SetCore("SendNotification", {
+                        Title = "กำจัดบอทแล้ว",
+                        Text = npc.Name,
+                        Duration = 0.4
+                    })
+                    lastTarget = nil
+                    removePlayerHighlight()
+                    if player.Character and player.Character:FindFirstChild("Humanoid") then
+                        camera.CameraSubject = player.Character:FindFirstChild("Humanoid")
+                    end
+                end
+            else
+                if player.Character and player.Character:FindFirstChild("Humanoid") then
+                    camera.CameraSubject = player.Character:FindFirstChild("Humanoid")
+                end
+                lastTarget = nil
+                removePlayerHighlight()
+            end
+        end)
+    else
+        if toggleLoop then
+            toggleLoop:Disconnect()
+            toggleLoop = nil
+        end
+        removePlayerHighlight()
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            camera.CameraSubject = player.Character:FindFirstChild("Humanoid")
+        end
+    end
+end)
+
+-- Noclip
+local noclip = false
+createButton("Noclip: ปิด", function(btn)
+	noclip = not noclip
+	btn.Text = "Noclip: " .. (noclip and "เปิด" or "ปิด")
+	for _, part in ipairs(player.Character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.CanCollide = not noclip
+		end
+	end
+end)
+
+RunService.Stepped:Connect(function()
+	if noclip then
+		for _, part in ipairs(player.Character:GetDescendants()) do
+			if part:IsA("BasePart") and part.CanCollide then
+				part.CanCollide = false
+			end
+		end
+	end
+end)
+
+-- ปลดล็อคกล้อง
+createButton("ปลดล็อคกล้อง", function()
+	if player.CameraMode == Enum.CameraMode.LockFirstPerson then
+		player.CameraMode = Enum.CameraMode.Classic
+	end
+end)
+
+-- MouseWheel Zoom
+local zoomValue = 0
+local zoomStep = 5
+local minFOV = 40
+local maxFOV = 120
+
+userInput = game:GetService("UserInputService")
+userInput.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseWheel then
+		local newFov = Camera.FieldOfView - (input.Position.Z * zoomStep)
+		Camera.FieldOfView = math.clamp(newFov, minFOV, maxFOV)
+	end
+end)
+
+-- Toggle Menu
+local menuOpen = false
+toggleButton.MouseButton1Click:Connect(function()
+	menuOpen = not menuOpen
+	mainFrame:TweenPosition(
+		menuOpen and UDim2.new(0, 0, 0, 0) or UDim2.new(0, -300, 0, 0),
+		"Out", "Quad", 0.3, true
+	)
+end)
+
+-- === New Section for HACK FLY ===
+createSectionHeader("HACK FLY")
+createButton("ลอยได้", function()
+	-- รันสคริปต์ Fly
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/AmareScripts/DeadRails/refs/heads/main/FlyV2%25viaTurret.lua"))()
+end)
+
+-- === ESP EGG Section ===
+createSectionHeader("ESP EGG")
+
+local espEnabled = false
+local activeHighlights = {}
+local colorShift = 0
+
+-- ฟังก์ชันใส่ Highlight ให้ Egg ถ้ายังไม่มี
+local function updateEggESP()
+	if not espEnabled then return end
+
+	-- ลบ Highlight ที่ไม่จำเป็นแล้ว
+	for egg, highlight in pairs(activeHighlights) do
+		if not egg or not egg.Parent then
+			highlight:Destroy()
+			activeHighlights[egg] = nil
+		end
+	end
+
+	-- หาทุก Egg ที่ยังไม่มี Highlight
+	for _, egg in ipairs(workspace:GetDescendants()) do
+		if egg:IsA("BasePart") and egg.Name == "Egg" and not activeHighlights[egg] then
+			local highlight = Instance.new("Highlight")
+			highlight.Adornee = egg
+			highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			highlight.FillTransparency = 0.25
+			highlight.OutlineTransparency = 0
+			highlight.Parent = egg
+			activeHighlights[egg] = highlight
+		end
+	end
+end
+
+-- เปลี่ยนสี Highlight แบบสีรุ้ง
+RunService.RenderStepped:Connect(function()
+	if not espEnabled then return end
+
+	colorShift = (colorShift + 1) % 360
+	local hue = colorShift / 360
+	local color = Color3.fromHSV(hue, 1, 1)
+
+	for egg, highlight in pairs(activeHighlights) do
+		if highlight then
+			highlight.FillColor = color
+			highlight.OutlineColor = Color3.new(1, 1, 1)
+		end
+	end
+
+	updateEggESP()
+end)
+
+-- ปุ่ม Toggle
+createButton("ESP EGG: ปิด", function(btn)
+	espEnabled = not espEnabled
+	btn.Text = "ESP EGG: " .. (espEnabled and "เปิด" or "ปิด")
+
+	if not espEnabled then
+		-- ลบ Highlight ทั้งหมด
+		for _, highlight in pairs(activeHighlights) do
+			if highlight then
+				highlight:Destroy()
+			end
+		end
+		activeHighlights = {}
+	end
+end)
+
+-- === ESP PLAYER/NPC Section ===
+createSectionHeader("ESP PLAYER/NPC")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+
+local espPlayerNpcEnabled = false
+local highlightList = {}
+
+local function addHighlight(model, fillColor)
+	if not highlightList[model] and model:FindFirstChild("Humanoid") then
+		local hl = Instance.new("Highlight")
+		hl.Adornee = model
+		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		hl.FillColor = fillColor
+		hl.OutlineColor = Color3.new(1, 1, 1)
+		hl.FillTransparency = 0.2
+		hl.OutlineTransparency = 0
+		hl.Parent = model
+		highlightList[model] = hl
+	end
+end
+
+local function removeHighlight(model)
+	if highlightList[model] then
+		highlightList[model]:Destroy()
+		highlightList[model] = nil
+	end
+end
+
+local function updatePlayerNpcESP()
+	if not espPlayerNpcEnabled then
+		for model in pairs(highlightList) do
+			removeHighlight(model)
+		end
+		return
+	end
+
+	-- Players
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= player and plr.Character and plr.Character:FindFirstChild("Humanoid") then
+			local char = plr.Character
+			if char.Humanoid.Health > 0 then
+				addHighlight(char, Color3.fromRGB(0, 255, 0))
+			else
+				removeHighlight(char)
+			end
+		end
+	end
+
+	-- NPCs
+	for _, model in ipairs(workspace:GetDescendants()) do
+		if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") and not Players:GetPlayerFromCharacter(model) then
+			if model.Humanoid.Health > 0 then
+				addHighlight(model, Color3.fromRGB(255, 0, 0))
+			else
+				removeHighlight(model)
+			end
+		end
+	end
+
+	-- ล้าง highlight ที่ตัวหายจาก workspace
+	for model in pairs(highlightList) do
+		if not model:IsDescendantOf(workspace) or not model:FindFirstChild("Humanoid") then
+			removeHighlight(model)
+		end
+	end
+end
+
+-- เรียกใช้ทุก frame เพื่อให้ ESP เป็นเรียลไทม์
+RunService.Heartbeat:Connect(function()
+	if espPlayerNpcEnabled then
+		updatePlayerNpcESP()
+	end
+end)
+
+-- ปุ่มเปิด/ปิด ESP
+createButton("ESP PLAYER/NPC: ปิด", function(btn)
+	espPlayerNpcEnabled = not espPlayerNpcEnabled
+	btn.Text = "ESP PLAYER/NPC: " .. (espPlayerNpcEnabled and "เปิด" or "ปิด")
+	if not espPlayerNpcEnabled then
+		updatePlayerNpcESP() -- เคลียร์ Highlight ทันที
+	end
+end)
+
+-- === TELEPORT DEAD RAILS ===
+createSectionHeader("TELEPORT DEAD RAILS")
+
+createButton("ไปหาเกวียน", function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/ringtaa/tpfarm.github.io/refs/heads/main/tptofarm.lua"))()
+end)
+
+createButton("จบเกมส์อย่างสันติ", function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/ringtaa/newpacifisct/refs/heads/main/newpacifisct.lua"))()
+end)
+
+createButton("ธนาคาร", function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/ringtaa/Tptobank.github.io/refs/heads/main/Banktp.lua"))()
+end)
+
+createButton("ไปเมืองร้าง", function()
+	loadstring(game:HttpGet('https://raw.githubusercontent.com/ringtaa/sterlingnotifcation.github.io/refs/heads/main/Sterling.lua'))()
+end)
+
+createButton("บอสเทสล่า", function()
+	loadstring(game:HttpGet('https://raw.githubusercontent.com/ringtaa/tptotesla.github.io/refs/heads/main/Tptotesla.lua'))()
+end)
+
+createButton("ไปปราสาทแวมไพร์", function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/ringtaa/castletpfast.github.io/refs/heads/main/FASTCASTLE.lua"))()
+end)
+
+createButton("ไปรังทหาร", function()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/ringtaa/Tpfort.github.io/refs/heads/main/Tpfort.lua"))()
+end)
+
+createButton("กลับรถไฟ", function()
+	loadstring(game:HttpGet('https://raw.githubusercontent.com/ringtaa/train.github.io/refs/heads/main/train.lua'))()
+end)
+
+-- === CREDIT ===
+createSectionHeader("CREDIT")
+
+createButton("อยากให้เพิ่มเมนูอะไรมั่งครับ", function()
+	local msg = Instance.new("Message")
+	msg.Text = "By M4keitup"
+	msg.Parent = workspace
+	task.delay(3, function()
+		msg:Destroy()
+	end)
+end)
+
+-- === สร้างพื้นลอยฟ้า ===
+createSectionHeader("ฟีเจอร์พิเศษ")
+
+local floatingPart = nil
+local TweenService = game:GetService("TweenService")
+
+createButton("สร้างพื้นลอยฟ้า", function(btn)
+	if floatingPart then
+		floatingPart:Destroy()
+		floatingPart = nil
+		btn.Text = "สร้างพื้นลอยฟ้า"
+	else
+		local char = player.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+		local root = char.HumanoidRootPart
+
+		floatingPart = Instance.new("Part")
+		floatingPart.Size = Vector3.new(10, 1, 10)
+		floatingPart.Anchored = true
+		floatingPart.CanCollide = true
+		floatingPart.Material = Enum.Material.ForceField
+		floatingPart.Transparency = 0.25
+		floatingPart.Color = Color3.fromRGB(100, 0, 150)
+		floatingPart.Position = root.Position + Vector3.new(0, 6, 0)
+		floatingPart.Name = "FloatingPlatform"
+		floatingPart.Parent = workspace
+
+		-- Tween ตัวละครไปบนพาร์ท
+		local newCFrame = CFrame.new(floatingPart.Position + Vector3.new(0, 3, 0))
+		local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+		local tween = TweenService:Create(root, tweenInfo, {CFrame = newCFrame})
+		tween:Play()
+
+		btn.Text = "ลบพื้นลอยฟ้า"
+	end
+end)
+
+-- === กันแบนนะครับ ===
+createSectionHeader("กันแบนนะครับ")
+
+createButton("กันเตะ", function()
+	loadstring([[
+		ait(0.5)
+		local ba=Instance.new("ScreenGui")
+		local ca=Instance.new("TextLabel")local da=Instance.new("Frame")
+		local _b=Instance.new("TextLabel")local ab=Instance.new("TextLabel")ba.Parent=game.CoreGui
+		ba.ZIndexBehavior=Enum.ZIndexBehavior.Sibling;ca.Parent=ba;ca.Active=true
+		ca.BackgroundColor3=Color3.new(0.176471,0.176471,0.176471)ca.Draggable=true
+		ca.Position=UDim2.new(0.698610067,0,0.098096624,0)ca.Size=UDim2.new(0,304,0,52)
+		ca.Font=Enum.Font.SourceSansSemibold;ca.Text="Anti Afk Kick Script"ca.TextColor3=Color3.new(0,1,1)
+		ca.TextSize=22;da.Parent=ca
+		da.BackgroundColor3=Color3.new(0.196078,0.196078,0.196078)da.Position=UDim2.new(0,0,1.0192306,0)
+		da.Size=UDim2.new(0,304,0,107)_b.Parent=da
+		_b.BackgroundColor3=Color3.new(0.176471,0.176471,0.176471)_b.Position=UDim2.new(0,0,0.800455689,0)
+		_b.Size=UDim2.new(0,304,0,21)_b.Font=Enum.Font.Arial;_b.Text="Made by Warn"
+		_b.TextColor3=Color3.new(1,1,1)_b.TextSize=20;ab.Parent=da
+		ab.BackgroundColor3=Color3.new(0.176471,0.176471,0.176471)ab.Position=UDim2.new(0,0,0.158377379,0)
+		ab.Size=UDim2.new(0,304,0,44)ab.Font=Enum.Font.ArialBold;ab.Text="Status: Script Started"
+		ab.TextColor3=Color3.new(1,1,1)ab.TextSize=20;local bb=game:service'VirtualUser'
+		game:service'Players'.LocalPlayer.Idled:connect(function()
+		bb:CaptureController()bb:ClickButton2(Vector2.new())
+		ab.Text="You went idle and ROBLOX tried to kick you but we reflected it!"wait(2)ab.Text="Script Re..."
+		end)
+	]])()
+end)

@@ -81,7 +81,7 @@ local function createButton(text, callback)
 end
 
 -- === Sections ===
-createSectionHeader("CLASS SELECTION")
+createSectionHeader("ปลดล็อคคลาสฟรี")
 createButton("คลาสม้า", function()
 	ReplicatedStorage.Shared.RemotePromise.Remotes.C_EquipClass:FireServer("Horse")
 end)
@@ -117,7 +117,7 @@ for _, className in ipairs(classList) do
     end)
 end
 
-createSectionHeader("PLAYER SETTINGS")
+createSectionHeader("ฟีเจอร์พิเศษ")
 -- BOT LOCK
 local npcLock = false
 local toggleLoop
@@ -220,58 +220,6 @@ createButton("ล็อกบอท: ปิด", function(btn)
     end
 end)
 
--- === เก็บไข่อัตโนมัติ ===
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-
-local player = Players.LocalPlayer
-local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("StoreItem")
-local eggNames = {"SmallEgg", "MediumEgg", "LargeEgg"}
-
-local autoEggAndSackEnabled = false
-local sackDistance = 25
-
-createButton("เก็บไข่อัตโนมัติ", function(btn)
-	autoEggAndSackEnabled = not autoEggAndSackEnabled
-	btn.Text = "เก็บไข่อัตโนมัติ" .. (autoEggAndSackEnabled and " (เปิด)" or " (ปิด)")
-
-	if autoEggAndSackEnabled then
-		task.spawn(function()
-			while autoEggAndSackEnabled do
-				local character = player.Character
-				local hrp = character and character:FindFirstChild("HumanoidRootPart")
-				local backpack = player:FindFirstChildOfClass("Backpack")
-				local sack = backpack and backpack:FindFirstChild("Sack")
-
-				-- ถือ Sack อัตโนมัติเมื่อใกล้ไข่
-				if hrp and sack then
-					for _, obj in ipairs(workspace:GetDescendants()) do
-						if obj:IsA("Model") and table.find(eggNames, obj.Name) then
-							local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-							if part and (part.Position - hrp.Position).Magnitude <= sackDistance then
-								sack.Parent = character
-								break
-							end
-						end
-					end
-				end
-
-				-- เก็บไข่อัตโนมัติ
-				for _, obj in ipairs(workspace:GetDescendants()) do
-					if obj:IsA("Model") and table.find(eggNames, obj.Name) then
-						pcall(function()
-							remote:FireServer(obj)
-						end)
-					end
-				end
-
-				task.wait(0.5)
-			end
-		end)
-	end
-end)
-
 -- Noclip
 local noclip = false
 createButton("Noclip: ปิด", function(btn)
@@ -296,34 +244,38 @@ end)
 
 local allDropGui -- GUI ตัวหลัก
 
-createButton("Drop all item", function(btn)
+createButton("ทิ้งไอเทม", function(btn)
 	if allDropGui then
 		allDropGui:Destroy()
 		allDropGui = nil
-		btn.Text = "Drop all item"
+		btn.Text = "ทิ้งไอเทม"
 	else
+		-- สร้าง GUI
 		local screenGui = Instance.new("ScreenGui")
 		screenGui.Name = "AllDropGui"
 		screenGui.ResetOnSpawn = false
 		screenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
 
+		-- สร้างปุ่ม "ทิ้ง"
 		local button = Instance.new("TextButton")
 		button.Name = "AllDropButton"
 		button.Size = UDim2.new(0, 50, 0, 50)
-		button.Position = UDim2.new(0, 10, 0.5, -25) -- เริ่มต้นที่ซ้ายมือ
-		button.Text = "ALL"
+		button.Position = UDim2.new(0, 10, 0.5, -25)
+		button.Text = "ทิ้ง"
 		button.TextColor3 = Color3.new(1, 1, 1)
 		button.TextSize = 18
 		button.Font = Enum.Font.SourceSansBold
-		button.BackgroundColor3 = Color3.fromRGB(255, 50, 50) -- สีแดง
+		button.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
 		button.BorderSizePixel = 0
 		button.AutoButtonColor = true
 		button.Parent = screenGui
 
+		-- มุมโค้ง
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(1, 0)
 		corner.Parent = button
 
+		-- ลากปุ่มได้
 		local dragging = false
 		local dragStart, startPos
 
@@ -354,14 +306,113 @@ createButton("Drop all item", function(btn)
 			end
 		end)
 
+		-- ปุ่มทิ้งของ 16 ครั้ง
 		button.MouseButton1Click:Connect(function()
+			local remote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("DropItem")
 			for i = 1, 16 do
-				game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("DropItem"):FireServer()
+				task.wait(0.1) -- กันสแปม
+				remote:FireServer()
 			end
 		end)
 
 		allDropGui = screenGui
-		btn.Text = "Drop all item (ซ่อน)"
+		btn.Text = "ทิ้งไอเทม (ซ่อน)"
+	end
+end)
+
+-- === Auto Egg Collector + Better Sack Handling (No Spam Unequip) ===
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
+local autoCollectEggs = false
+local range = 15
+local holdingSack = false
+
+local function getSackTool()
+	for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+		if tool:IsA("Tool") and tool.Name == "Sack" then
+			return tool
+		end
+	end
+	for _, tool in ipairs(Character:GetChildren()) do
+		if tool:IsA("Tool") and tool.Name == "Sack" then
+			return tool
+		end
+	end
+	return nil
+end
+
+local function isInRange(egg)
+	local root = Character:FindFirstChild("HumanoidRootPart")
+	if not root or not egg.PrimaryPart then return false end
+	local distance = (egg.PrimaryPart.Position - root.Position).Magnitude
+	return distance <= range
+end
+
+local function isValidEgg(v)
+	return v:IsA("Model") and (v.Name == "SmallEgg" or v.Name == "MediumEgg") and v.PrimaryPart
+end
+
+local function findEggs()
+	local eggs = {}
+	for _, v in ipairs(getnilinstances()) do
+		if isValidEgg(v) then table.insert(eggs, v) end
+	end
+	for _, v in ipairs(Workspace:GetDescendants()) do
+		if isValidEgg(v) then table.insert(eggs, v) end
+	end
+	return eggs
+end
+
+local function loopCollectEggs()
+	while autoCollectEggs do
+		local eggs = findEggs()
+		local inRange = {}
+
+		for _, egg in ipairs(eggs) do
+			if isInRange(egg) then
+				table.insert(inRange, egg)
+			end
+		end
+
+		local sack = getSackTool()
+
+		if #inRange > 0 then
+			if sack and not holdingSack then
+				sack.Parent = Character
+				holdingSack = true
+			end
+			for _, egg in ipairs(inRange) do
+				ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("StoreItem"):FireServer(egg)
+				task.wait(0.1)
+			end
+		else
+			if sack and holdingSack then
+				sack.Parent = LocalPlayer.Backpack
+				holdingSack = false
+			end
+		end
+
+		task.wait(0.5)
+	end
+end
+
+-- ปุ่ม toggle
+createButton("เก็บไข่ออโต้: ปิด", function(btn)
+	autoCollectEggs = not autoCollectEggs
+	btn.Text = "เก็บไข่ออโต้: " .. (autoCollectEggs and "เปิด" or "ปิด")
+	if autoCollectEggs then
+		task.spawn(loopCollectEggs)
+	else
+		-- ปิด auto: ย้าย Sack กลับไป Backpack ถ้ายังถืออยู่
+		local sack = getSackTool()
+		if sack and sack.Parent == Character then
+			sack.Parent = LocalPlayer.Backpack
+		end
+		holdingSack = false
 	end
 end)
 
@@ -396,186 +447,48 @@ toggleButton.MouseButton1Click:Connect(function()
 	)
 end)
 
--- === New Section for HACK FLY ===
-createSectionHeader("HACK FLY")
+-- === HACK FLY ===
 createButton("ลอยได้", function()
 	-- รันสคริปต์ Fly
 	loadstring(game:HttpGet("https://raw.githubusercontent.com/AmareScripts/DeadRails/refs/heads/main/FlyV2%25viaTurret.lua"))()
 end)
 
--- === ESP Section ===
-createSectionHeader("ESP Section")
-local eggHighlights = {}
-local npcHighlights = {}
-local espEnabled = false
-local espPlayerNpcEnabled = false
-local colorShift = 0
-local player = game.Players.LocalPlayer
-local Players = game:GetService("Players")
-local workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
+-- === สร้างพื้นลอยฟ้า ===
+local floatingPart = nil
+local TweenService = game:GetService("TweenService")
 
--- === ตรวจสอบว่าเป็น Egg ไหม ===
-local function isValidEgg(obj)
-	return obj:IsA("BasePart") and obj.Name == "Egg"
-end
-
--- === เพิ่ม Highlight ให้ Egg ===
-local function addEggESP(egg)
-	if not eggHighlights[egg] then
-		local hl = Instance.new("Highlight")
-		hl.Adornee = egg
-		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		hl.FillTransparency = 0.25
-		hl.OutlineTransparency = 0
-		hl.Parent = egg
-		eggHighlights[egg] = hl
-	end
-end
-
--- === ลบ Highlight ของ Egg ===
-local function removeEggESP(egg)
-	if eggHighlights[egg] then
-		eggHighlights[egg]:Destroy()
-		eggHighlights[egg] = nil
-	end
-end
-
--- === เพิ่ม Highlight ให้ NPC/Player ===
-local function addHighlight(model, fillColor)
-	if not npcHighlights[model] and model:FindFirstChildOfClass("Humanoid") then
-		local hl = Instance.new("Highlight")
-		hl.Adornee = model
-		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		hl.FillColor = fillColor
-		hl.OutlineColor = Color3.new(1, 1, 1)
-		hl.FillTransparency = 0.2
-		hl.OutlineTransparency = 0
-		hl.Parent = model
-		npcHighlights[model] = hl
-	end
-end
-
--- === ลบ Highlight ของ NPC/Player ===
-local function removeHighlight(model)
-	if npcHighlights[model] then
-		npcHighlights[model]:Destroy()
-		npcHighlights[model] = nil
-	end
-end
-
--- === ตรวจจับสิ่งใหม่ใน Workspace ===
-workspace.DescendantAdded:Connect(function(obj)
-	if espEnabled and isValidEgg(obj) then
-		addEggESP(obj)
-	end
-
-	if espPlayerNpcEnabled and obj:IsA("Model") then
-		task.delay(0.1, function()
-			if obj:IsDescendantOf(workspace) and obj:FindFirstChildOfClass("Humanoid") then
-				local isPlayer = Players:GetPlayerFromCharacter(obj)
-				if isPlayer and isPlayer ~= player then
-					addHighlight(obj, Color3.fromRGB(0, 255, 0))
-				elseif not isPlayer then
-					addHighlight(obj, Color3.fromRGB(255, 0, 0))
-				end
-			end
-		end)
-	end
-end)
-
--- === ตรวจสอบการหายไปของ Egg/NPC ===
-RunService.Heartbeat:Connect(function()
-	for egg, hl in pairs(eggHighlights) do
-		if not egg or not egg:IsDescendantOf(workspace) then
-			removeEggESP(egg)
-		end
-	end
-
-	for model, hl in pairs(npcHighlights) do
-		if not model:IsDescendantOf(workspace) or not model:FindFirstChildOfClass("Humanoid") then
-			removeHighlight(model)
-		end
-	end
-end)
-
--- === สีรุ้งให้ Egg ===
-RunService.RenderStepped:Connect(function()
-	if espEnabled then
-		colorShift = (colorShift + 1) % 360
-		local hue = colorShift / 360
-		local color = Color3.fromHSV(hue, 1, 1)
-
-		for _, hl in pairs(eggHighlights) do
-			if hl then
-				hl.FillColor = color
-				hl.OutlineColor = Color3.new(1, 1, 1)
-			end
-		end
-	end
-end)
-
--- === ตรวจสอบ PLAYER/NPC ทุกเฟรมแบบละเอียด ===
-RunService.RenderStepped:Connect(function()
-	if espPlayerNpcEnabled then
-		for _, model in ipairs(workspace:GetDescendants()) do
-			if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") and not npcHighlights[model] then
-				local isPlayer = Players:GetPlayerFromCharacter(model)
-				if isPlayer and isPlayer ~= player then
-					addHighlight(model, Color3.fromRGB(0, 255, 0))
-				elseif not isPlayer then
-					addHighlight(model, Color3.fromRGB(255, 0, 0))
-				end
-			end
-		end
-	end
-end)
-
--- === ปุ่มสลับ ESP ===
-createButton("ESP EGG: ปิด", function(btn)
-	espEnabled = not espEnabled
-	btn.Text = "ESP EGG: " .. (espEnabled and "เปิด" or "ปิด")
-
-	if not espEnabled then
-		for _, hl in pairs(eggHighlights) do
-			hl:Destroy()
-		end
-		eggHighlights = {}
+createButton("สร้างพื้นลอยฟ้า", function(btn)
+	if floatingPart then
+		floatingPart:Destroy()
+		floatingPart = nil
+		btn.Text = "สร้างพื้นลอยฟ้า"
 	else
-		for _, obj in ipairs(workspace:GetDescendants()) do
-			if isValidEgg(obj) then
-				addEggESP(obj)
-			end
-		end
-	end
-end)
+		local char = player.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+		local root = char.HumanoidRootPart
 
-createButton("ESP PLAYER/NPC: ปิด", function(btn)
-	espPlayerNpcEnabled = not espPlayerNpcEnabled
-	btn.Text = "ESP PLAYER/NPC: " .. (espPlayerNpcEnabled and "เปิด" or "ปิด")
+		floatingPart = Instance.new("Part")
+		floatingPart.Size = Vector3.new(10, 1, 10)
+		floatingPart.Anchored = true
+		floatingPart.CanCollide = true
+		floatingPart.Material = Enum.Material.ForceField
+		floatingPart.Transparency = 0.25
+		floatingPart.Color = Color3.fromRGB(100, 0, 150)
+		floatingPart.Position = root.Position + Vector3.new(0, 6, 0)
+		floatingPart.Name = "FloatingPlatform"
+		floatingPart.Parent = workspace
 
-	if not espPlayerNpcEnabled then
-		for _, hl in pairs(npcHighlights) do
-			hl:Destroy()
-		end
-		npcHighlights = {}
-	else
-		for _, plr in ipairs(Players:GetPlayers()) do
-			if plr ~= player and plr.Character then
-				addHighlight(plr.Character, Color3.fromRGB(0, 255, 0))
-			end
-		end
-		for _, model in ipairs(workspace:GetDescendants()) do
-			if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") and not Players:GetPlayerFromCharacter(model) then
-				addHighlight(model, Color3.fromRGB(255, 0, 0))
-			end
-		end
+		-- Tween ตัวละครไปบนพาร์ท
+		local newCFrame = CFrame.new(floatingPart.Position + Vector3.new(0, 3, 0))
+		local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+		local tween = TweenService:Create(root, tweenInfo, {CFrame = newCFrame})
+		tween:Play()
+
+		btn.Text = "ลบพื้นลอยฟ้า"
 	end
 end)
 
 -- === X-ray Section ===
-createSectionHeader("X-ray")
-
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -651,8 +564,257 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
+-- === Auto Melee Section (Only NPC) ===
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local enabled = false
+local toolEquipped = false
+local meleeTools = {}
+local attackCooldown = 0.5
+local lastAttackTime = 0
+local npcDetectionRange = 15
+
+local function isMeleeTool(tool)
+	if tool:IsA("Tool") then
+		local swingEvent = tool:FindFirstChild("SwingEvent")
+		return swingEvent and swingEvent:IsA("RemoteEvent")
+	end
+	return false
+end
+
+local function scanMeleeTools()
+	meleeTools = {}
+	for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+		if isMeleeTool(tool) then
+			table.insert(meleeTools, tool)
+		end
+	end
+end
+
+local function equipMeleeTools()
+	local character = LocalPlayer.Character
+	if not character then return end
+
+	scanMeleeTools()
+
+	for _, tool in ipairs(meleeTools) do
+		if tool:IsDescendantOf(LocalPlayer.Backpack) then
+			tool.Parent = character
+		end
+	end
+
+	toolEquipped = true
+end
+
+local function unequipMeleeTools()
+	local character = LocalPlayer.Character
+	if not character then return end
+
+	for _, tool in ipairs(character:GetChildren()) do
+		if isMeleeTool(tool) then
+			tool.Parent = LocalPlayer.Backpack
+		end
+	end
+
+	toolEquipped = false
+end
+
+-- ตรวจหาเฉพาะ NPC เท่านั้น (ไม่นับผู้เล่น)
+local function getNearbyNPC()
+	local character = LocalPlayer.Character
+	if not character then return nil end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return nil end
+
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") then
+			-- เช็คว่าไม่ใช่ตัวผู้เล่น และไม่ใช่ตัว LocalPlayer เอง
+			if not Players:GetPlayerFromCharacter(obj) and obj ~= character then
+				if obj.Humanoid.Health > 0 then
+					local distance = (obj.HumanoidRootPart.Position - root.Position).Magnitude
+					if distance <= npcDetectionRange then
+						return obj
+					end
+				end
+			end
+		end
+	end
+
+	return nil
+end
+
+local function attackLoop()
+	if tick() - lastAttackTime < attackCooldown then return end
+
+	local character = LocalPlayer.Character
+	if not character then return end
+
+	for _, tool in ipairs(meleeTools) do
+		local swing = tool:FindFirstChild("SwingEvent")
+		if swing and swing:IsA("RemoteEvent") then
+			local direction = Vector3.new(0, 0, -1)
+			swing:FireServer(direction)
+		end
+	end
+
+	lastAttackTime = tick()
+end
+
+-- ปุ่ม GUI เปิด/ปิด
+createButton("ตีออโต้: ปิด", function(btn)
+	enabled = not enabled
+	btn.Text = "ตีออโต้: " .. (enabled and "เปิด" or "ปิด")
+
+	if not enabled then
+		unequipMeleeTools()
+	end
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not enabled then return end
+	local npc = getNearbyNPC()
+
+	if npc then
+		if not toolEquipped then
+			equipMeleeTools()
+		else
+			local character = LocalPlayer.Character
+			if character then
+				local hasAll = true
+				for _, tool in ipairs(meleeTools) do
+					if not tool:IsDescendantOf(character) then
+						hasAll = false
+						break
+					end
+				end
+				if not hasAll then
+					equipMeleeTools()
+				end
+			end
+		end
+		attackLoop()
+	else
+		if toolEquipped then
+			unequipMeleeTools()
+		end
+	end
+end)
+
+-- === ESP Section (Optimized) ===
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+local espEnabled = false
+local highlighted = {}
+
+-- สร้าง Highlight
+local function createHighlight(obj, color)
+	if not obj or highlighted[obj] then return end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "AutoESP_Highlight"
+	highlight.FillColor = color
+	highlight.OutlineColor = Color3.new(1, 1, 1) -- ขอบขาว
+	highlight.FillTransparency = 0.4
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Adornee = obj
+	highlight.Parent = obj:IsA("Model") and obj or obj:FindFirstAncestorWhichIsA("Model") or Workspace
+
+	highlighted[obj] = highlight
+end
+
+-- เช็กว่าเป็น NPC
+local function isNPC(model)
+	return model:IsA("Model")
+		and model:FindFirstChildOfClass("Humanoid")
+		and not Players:GetPlayerFromCharacter(model)
+end
+
+-- เช็กว่าเป็น Player
+local function isPlayer(model)
+	return model:IsA("Model")
+		and model:FindFirstChildOfClass("Humanoid")
+		and Players:GetPlayerFromCharacter(model)
+		and model ~= LocalPlayer.Character
+end
+
+-- เช็ก Egg
+local function isEgg(part)
+	return part:IsA("BasePart") and part.Name:lower() == "egg"
+end
+
+-- ตรวจสอบวัตถุ
+local function checkObject(obj)
+	if highlighted[obj] then return end
+	if isNPC(obj) then
+		createHighlight(obj, Color3.fromRGB(255, 0, 0)) -- NPC แดง
+	elseif isPlayer(obj) then
+		createHighlight(obj, Color3.fromRGB(0, 255, 0)) -- Player เขียว
+	elseif isEgg(obj) then
+		createHighlight(obj, Color3.fromRGB(255, 215, 0)) -- Egg ทอง
+	end
+end
+
+-- ติดตาม Model ที่อาจจะกลายเป็น NPC/Player
+local function trackModel(model)
+	if highlighted[model] then return end
+	if not model:IsA("Model") then return end
+
+	model.ChildAdded:Connect(function(child)
+		task.defer(function()
+			checkObject(model)
+			checkObject(child)
+		end)
+	end)
+end
+
+-- ติดตามของใหม่ที่ถูกเพิ่มใน Workspace
+Workspace.DescendantAdded:Connect(function(obj)
+	if espEnabled then
+		task.defer(function()
+			checkObject(obj)
+			trackModel(obj)
+		end)
+	end
+end)
+
+-- ลูปสแกนทุก 0.5 วินาที แทนทุกเฟรม เพื่อลดแลค
+task.spawn(function()
+	while true do
+		if espEnabled then
+			for _, obj in ipairs(Workspace:GetDescendants()) do
+				task.defer(function()
+					checkObject(obj)
+					trackModel(obj)
+				end)
+			end
+		end
+		task.wait(0.5)
+	end
+end)
+
+-- ปุ่ม toggle ESP
+createButton("ESP: ปิด", function(btn)
+	espEnabled = not espEnabled
+	btn.Text = "ESP: " .. (espEnabled and "เปิด" or "ปิด")
+
+	if not espEnabled then
+		for obj, hl in pairs(highlighted) do
+			if hl and hl:IsA("Highlight") then
+				hl:Destroy()
+			end
+		end
+		highlighted = {}
+	end
+end)
+
 -- === TELEPORT DEAD RAILS ===
-createSectionHeader("TELEPORT DEAD RAILS")
+createSectionHeader("วาร์ปไปตามสถานที่")
 
 createButton("ไปหาเกวียน", function()
 	loadstring(game:HttpGet("https://raw.githubusercontent.com/ringtaa/tpfarm.github.io/refs/heads/main/tptofarm.lua"))()
@@ -684,116 +846,4 @@ end)
 
 createButton("กลับรถไฟ", function()
 	loadstring(game:HttpGet('https://raw.githubusercontent.com/ringtaa/train.github.io/refs/heads/main/train.lua'))()
-end)
-
--- === CREDIT ===
-createSectionHeader("CREDIT")
-
-createButton("อยากให้เพิ่มเมนูอะไรมั่งครับ", function()
-	local msg = Instance.new("Message")
-	msg.Text = "By M4keitup"
-	msg.Parent = workspace
-	task.delay(3, function()
-		msg:Destroy()
-	end)
-end)
-
--- === สร้างพื้นลอยฟ้า ===
-createSectionHeader("ฟีเจอร์พิเศษ")
-
-local floatingPart = nil
-local TweenService = game:GetService("TweenService")
-
-createButton("สร้างพื้นลอยฟ้า", function(btn)
-	if floatingPart then
-		floatingPart:Destroy()
-		floatingPart = nil
-		btn.Text = "สร้างพื้นลอยฟ้า"
-	else
-		local char = player.Character
-		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-		local root = char.HumanoidRootPart
-
-		floatingPart = Instance.new("Part")
-		floatingPart.Size = Vector3.new(10, 1, 10)
-		floatingPart.Anchored = true
-		floatingPart.CanCollide = true
-		floatingPart.Material = Enum.Material.ForceField
-		floatingPart.Transparency = 0.25
-		floatingPart.Color = Color3.fromRGB(100, 0, 150)
-		floatingPart.Position = root.Position + Vector3.new(0, 6, 0)
-		floatingPart.Name = "FloatingPlatform"
-		floatingPart.Parent = workspace
-
-		-- Tween ตัวละครไปบนพาร์ท
-		local newCFrame = CFrame.new(floatingPart.Position + Vector3.new(0, 3, 0))
-		local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-		local tween = TweenService:Create(root, tweenInfo, {CFrame = newCFrame})
-		tween:Play()
-
-		btn.Text = "ลบพื้นลอยฟ้า"
-	end
-end)
-
--- === QUEST Section ===
-createSectionHeader("เควส")
-
--- Unicorn Highlight Effect (Optimized)
-local CollectionService = game:GetService("CollectionService")
-local RunService = game:GetService("RunService")
-
-local unicornHighlightEnabled = false
-local unicornHighlights = {}
-local updateInterval = 0.5
-local lastUpdate = 0
-
-local function updateUnicornESP()
-	if not unicornHighlightEnabled then return end
-
-	-- ลบ Highlight ที่ไม่จำเป็น
-	for unicorn, highlight in pairs(unicornHighlights) do
-		if not unicorn or not unicorn:IsDescendantOf(game) then
-			if highlight then highlight:Destroy() end
-			unicornHighlights[unicorn] = nil
-		end
-	end
-
-	-- เพิ่ม Highlight ให้ Unicorn ที่ยังไม่มี
-	for _, obj in ipairs(CollectionService:GetTagged("Unicorn")) do
-		if obj:IsA("BasePart") and not unicornHighlights[obj] then
-			local highlight = Instance.new("Highlight")
-			highlight.Adornee = obj
-			highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-			highlight.FillColor = Color3.fromRGB(255, 105, 180)
-			highlight.OutlineColor = Color3.fromRGB(255, 105, 180)
-			highlight.FillTransparency = 0.25
-			highlight.OutlineTransparency = 0
-			highlight.Parent = obj
-			unicornHighlights[obj] = highlight
-		end
-	end
-end
-
--- ปุ่ม Toggle Unicorn ESP
-createButton("Unicorn ESP: ปิด", function(btn)
-	unicornHighlightEnabled = not unicornHighlightEnabled
-	btn.Text = "Unicorn ESP: " .. (unicornHighlightEnabled and "เปิด" or "ปิด")
-
-	if not unicornHighlightEnabled then
-		for _, highlight in pairs(unicornHighlights) do
-			if highlight then highlight:Destroy() end
-		end
-		unicornHighlights = {}
-	end
-end)
-
--- ทำงานทุก 0.5 วินาทีเท่านั้น
-RunService.Heartbeat:Connect(function(dt)
-	if unicornHighlightEnabled then
-		lastUpdate += dt
-		if lastUpdate >= updateInterval then
-			updateUnicornESP()
-			lastUpdate = 0
-		end
-	end)
 end)

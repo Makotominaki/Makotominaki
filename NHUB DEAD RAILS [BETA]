@@ -416,6 +416,59 @@ createButton("เก็บไข่ออโต้: ปิด", function(btn)
 	end
 end)
 
+-- === ฟักไข่อัตโนมัติ ===
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+local autoHatchEgg = false
+
+local function isValidEgg(v)
+	return v:IsA("Model") and (v.Name == "SmallEgg" or v.Name == "MediumEgg")
+end
+
+local function findAllEggs()
+	local eggs = {}
+	for _, v in next, getnilinstances() do
+		if isValidEgg(v) then
+			table.insert(eggs, v)
+		end
+	end
+	for _, v in ipairs(Workspace:GetDescendants()) do
+		if isValidEgg(v) then
+			table.insert(eggs, v)
+		end
+	end
+	return eggs
+end
+
+local function hatchEggLoop()
+	while autoHatchEgg do
+		local eggs = findAllEggs()
+		for _, egg in ipairs(eggs) do
+			local args = { [1] = egg }
+			ReplicatedStorage:WaitForChild("Packages"):WaitForChild("RemotePromise")
+				:WaitForChild("Remotes"):WaitForChild("C_ActivateObject")
+				:FireServer(unpack(args))
+			task.wait(0.25)
+		end
+		task.wait(1)
+	end
+end
+
+-- ปุ่ม toggle ฟักไข่อัตโนมัติ (สไตล์เดียวกับ ESP)
+createButton("ฟักไข่อัตโนมัติ: ปิด", function(btn)
+	autoHatchEgg = not autoHatchEgg
+	btn.Text = "ฟักไข่อัตโนมัติ: " .. (autoHatchEgg and "เปิด" or "ปิด")
+
+	if not autoHatchEgg then
+		-- ไม่ต้องทำอะไรเมื่อปิด
+	else
+		task.spawn(hatchEggLoop)
+	end
+end)
+
 -- === กินน้ำมันงู ===
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")

@@ -416,6 +416,129 @@ createButton("เก็บไข่ออโต้: ปิด", function(btn)
 	end
 end)
 
+-- === กินน้ำมันงู ===
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local autoUseEnabled = false
+local healthThresholdPercent = 30
+local thresholdGui = nil -- เก็บ reference ของ GUI กลางจอ
+
+local function getSnakeOil()
+	return LocalPlayer.Backpack:FindFirstChild("Snake Oil") or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Snake Oil"))
+end
+
+local function getUseRemote()
+	for _, v in ipairs(game:GetDescendants()) do
+		if v:IsA("RemoteEvent") and v.Name == "Use" then
+			return v
+		end
+	end
+end
+
+local function equipSnakeOil()
+	local character = LocalPlayer.Character
+	local tool = LocalPlayer.Backpack:FindFirstChild("Snake Oil")
+	if character and tool then
+		tool.Parent = character
+	end
+end
+
+local function useSnakeOil()
+	local tool = getSnakeOil()
+	local remote = getUseRemote()
+	if tool and remote then
+		remote:FireServer(tool)
+	end
+end
+
+local function createThresholdGUI()
+	if thresholdGui then thresholdGui:Destroy() end
+
+	local screenGui = Instance.new("ScreenGui", PlayerGui)
+	screenGui.Name = "HealthThresholdGui"
+	screenGui.ResetOnSpawn = false
+	thresholdGui = screenGui
+
+	local frame = Instance.new("Frame", screenGui)
+	frame.Size = UDim2.new(0, 300, 0, 150)
+	frame.Position = UDim2.new(0.5, -150, 0.5, -75)
+	frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	frame.BorderSizePixel = 0
+
+	local label = Instance.new("TextLabel", frame)
+	label.Size = UDim2.new(1, 0, 0.4, 0)
+	label.Position = UDim2.new(0, 0, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = "เลือกว่าให้มันกินตอนเลือดกี่เปอร์เซ็นต์"
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Font = Enum.Font.SourceSansBold
+	label.TextSize = 18
+
+	local textBox = Instance.new("TextBox", frame)
+	textBox.Size = UDim2.new(0.8, 0, 0.3, 0)
+	textBox.Position = UDim2.new(0.1, 0, 0.45, 0)
+	textBox.PlaceholderText = "ใส่เลข 1 - 100"
+	textBox.Text = ""
+	textBox.Font = Enum.Font.SourceSans
+	textBox.TextSize = 16
+	textBox.TextColor3 = Color3.new(1, 1, 1)
+	textBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+
+	local button = Instance.new("TextButton", frame)
+	button.Size = UDim2.new(0.5, 0, 0.2, 0)
+	button.Position = UDim2.new(0.25, 0, 0.8, 0)
+	button.Text = "ตกลงเปอร์เซ็นต์เลือด"
+	button.Font = Enum.Font.SourceSansBold
+	button.TextSize = 16
+	button.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- สีแดง
+	button.TextColor3 = Color3.new(1, 1, 1)
+
+	button.MouseButton1Click:Connect(function()
+		local val = tonumber(textBox.Text)
+		if val and val >= 1 and val <= 100 then
+			healthThresholdPercent = val
+			screenGui:Destroy()
+			thresholdGui = nil
+		else
+			textBox.Text = "ใส่เลข 1 - 100"
+		end
+	end)
+end
+
+createButton("กินน้ำมันงูอัตโนมัติ: ปิด", function(btn)
+	autoUseEnabled = not autoUseEnabled
+	btn.Text = "กินน้ำมันงูอัตโนมัติ: " .. (autoUseEnabled and "เปิด" or "ปิด")
+
+	if autoUseEnabled then
+		createThresholdGUI()
+	else
+		if thresholdGui then
+			thresholdGui:Destroy()
+			thresholdGui = nil
+		end
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if autoUseEnabled then
+			local character = LocalPlayer.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				local hpPercent = (humanoid.Health / humanoid.MaxHealth) * 100
+				if hpPercent <= healthThresholdPercent then
+					equipSnakeOil()
+					useSnakeOil()
+				end
+			end
+		end
+		task.wait(1)
+	end
+end)
+
 -- ปลดล็อคกล้อง
 createButton("ปลดล็อคกล้อง", function()
 	if player.CameraMode == Enum.CameraMode.LockFirstPerson then
